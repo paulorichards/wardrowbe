@@ -1,0 +1,137 @@
+# casa-sync — mantiene el fork al día con upstream (Anyesh/wardrowbe).
+#
+#   main  = espejo exacto de upstream/main. Base de las ramas para PRs upstream.
+#   casa  = último release de upstream + nuestros parches encima. De acá salen
+#           las imágenes del NAS (casa-build.yml).
+#
+# Cuando upstream publica un release, rebasa `casa` sobre el tag nuevo. Los
+# parches que upstream ya aceptó desaparecen solos (git rebase descarta los
+# commits cuyo cambio ya está en la base). Si hay conflicto, NO publica: abre
+# un issue y deja `casa` como estaba.
+#
+# ⛔ Necesita el secret CASA_SYNC_TOKEN (fine-grained, sólo este repo, permisos
+# Contents y Workflows en escritura). Con GITHUB_TOKEN GitHub rechaza cualquier
+# push que traiga cambios de upstream en .github/workflows, y además un push
+# hecho con GITHUB_TOKEN no dispara casa-build.
+name: casa-sync
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: casa-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      HAY_TOKEN: ${{ secrets.CASA_SYNC_TOKEN != '' }}
+    steps:
+      - name: Falta el token
+        if: env.HAY_TOKEN != 'true'
+        run: |
+          echo "::error::Falta el secret CASA_SYNC_TOKEN — ver el encabezado de este workflow"
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          ref: casa
+          fetch-depth: 0
+          token: ${{ secrets.CASA_SYNC_TOKEN }}
+
+      - name: Traer upstream
+        run: |
+          git config user.name "casa-sync"
+          git config user.email "casa-sync@users.noreply.github.com"
+          git remote add upstream https://github.com/Anyesh/wardrowbe.git
+          git fetch --quiet upstream main --tags
+
+      - name: Espejar main
+        run: |
+          # Fast-forward: si upstream reescribiera su historia esto falla a la
+          # vista en vez de pisar main en silencio.
+          git push origin upstream/main:refs/heads/main
+          echo "main → $(git rev-parse --short upstream/main)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Rebasar casa sobre el último release
+        id: rebase
+        run: |
+          base="$(cat .casa/base)"
+          # Sólo releases X.Y.Z, sin prereleases.
+          latest="$(git tag -l 'wardrowbe-v*' --sort=-v:refname | grep -E '^wardrowbe-v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          if [ "$latest" = "$base" ]; then
+            echo "casa ya está sobre $base" >> "$GITHUB_STEP_SUMMARY"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          before="$(git rev-parse HEAD)"
+          echo "before=$before" >> "$GITHUB_OUTPUT"
+          git log --format='%s' "$base..HEAD" > /tmp/antes.txt
+
+          if ! git rebase --onto "$latest" "$base" casa; then
+            git diff --name-only --diff-filter=U > /tmp/conflictos.txt
+            git rebase --abort
+            echo "changed=conflict" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "$latest" > .casa/base
+          git add .casa/base
+          git commit --quiet -m "chore(casa): base $latest"
+          git log --format='%s' "$latest..HEAD" > /tmp/despues.txt
+
+          {
+            echo "### casa: $base → $latest"
+            echo
+            echo "Parches que upstream ya incluye (descartados por el rebase):"
+            grep -vxF -f /tmp/despues.txt /tmp/antes.txt | grep -v '^chore(casa): base ' | sed 's/^/- /' || echo "- ninguno"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Publicar casa
+        if: steps.rebase.outputs.changed == 'true'
+        run: git push --force-with-lease=casa:${{ steps.rebase.outputs.before }} origin casa
+
+      - name: Avisar el conflicto
+        if: steps.rebase.outputs.changed == 'conflict'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LATEST: ${{ steps.rebase.outputs.latest }}
+          BASE: ${{ steps.rebase.outputs.base }}
+        run: |
+          fence="$(printf '\140\140\140')"  # ``` sin que el shell lo lea como comando
+          title="casa-sync: conflicto al rebasar casa sobre $LATEST"
+          if gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number' | grep -q .; then
+            echo "Ya hay un issue abierto para $LATEST" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "No se pudo rebasar \`casa\` de \`$BASE\` a \`$LATEST\`. \`casa\` quedó como estaba: el NAS sigue en la imagen anterior."
+              echo
+              echo "Archivos en conflicto:"
+              # shellcheck disable=SC2016 # el $ es el fin de línea de sed, no una variable
+              sed 's/^/- `/; s/$/`/' /tmp/conflictos.txt
+              echo
+              echo "Arreglo local:"
+              echo "${fence}sh"
+              echo "git fetch upstream --tags && git switch casa"
+              echo "git rebase --onto $LATEST $BASE casa   # resolver, git rebase --continue"
+              echo "echo $LATEST > .casa/base && git commit -am 'chore(casa): base $LATEST'"
+              echo "git push --force-with-lease origin casa"
+              echo "$fence"
+              echo
+              echo "Log: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            } > /tmp/issue.md
+            gh issue create --title "$title" --body-file /tmp/issue.md
+          fi
+          echo "::error::Conflicto al rebasar sobre $LATEST — ver el issue"
+          exit 1
