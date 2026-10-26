@@ -1,3 +1,6 @@
+import json
+import re
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -5,6 +8,8 @@ import pytest
 
 from app.services.ai_service import (
     DESCRIPTION_LANGUAGES,
+    TAGGING_PROMPT,
+    VALID_PATTERNS,
     AIResponseTruncatedError,
     AIService,
     ClothingTags,
@@ -120,6 +125,15 @@ class TestLocalizedDescription:
 
 class TestTagParsing:
     """Tests for AI response parsing."""
+
+    def test_parse_heathered_pattern(self):
+        """A heather gray tee is one color of mixed fibers: the model says
+        "heathered", and the validator must keep it instead of dropping it."""
+        service = AIService()
+        tags = service._parse_tags_from_response(
+            '{"type": "t-shirt", "primary_color": "gray", "pattern": "heathered"}'
+        )
+        assert tags.pattern == "heathered"
 
     def test_parse_valid_json(self):
         """Test parsing valid JSON response."""
@@ -973,3 +987,21 @@ class TestReasoningEffort:
                 await service.generate_text("suggest an outfit")
 
         assert mock_post.call_count == 1
+
+
+class TestPatternVocabulary:
+    """The prompt, the validator and the UI each list the patterns. A pattern in
+    the validator but not the prompt is never offered; one in the prompt but not
+    the validator is silently dropped; one without a label shows a raw key."""
+
+    def test_prompt_offers_exactly_the_valid_patterns(self):
+        block = re.search(r"PATTERN \(required, pick one\):\n([^\n]+)", TAGGING_PROMPT)
+        assert block, "the PATTERN section is missing from the tagging prompt"
+        offered = {p.strip() for p in block.group(1).split(",")}
+        assert offered == VALID_PATTERNS
+
+    def test_every_pattern_has_an_english_label(self):
+        constants = Path(__file__).resolve().parents[2] / "frontend/messages/en/constants.json"
+        data = json.loads(constants.read_text(encoding="utf-8"))
+        labels = next(v for v in data.values() if isinstance(v, dict) and "polka-dot" in v)
+        assert VALID_PATTERNS <= labels.keys(), VALID_PATTERNS - labels.keys()

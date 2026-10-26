@@ -96,6 +96,7 @@ VALID_TYPES = set(TYPES)
 VALID_COLORS = set(COLORS)
 VALID_PATTERNS = {
     "solid",
+    "heathered",
     "striped",
     "plaid",
     "checkered",
