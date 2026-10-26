@@ -29,10 +29,11 @@ de alembic se corren a mano).
 
 ## Workflows de upstream
 
-Están **desactivados** en este repo (Actions → cada uno → Disable): sin eso,
-cada push del espejo a `main` correría release-please y abriría PRs de release
-acá, y los bots de bienvenida comentarían nuestros issues. Si upstream agrega
-un workflow nuevo, desactivarlo también.
+Están **desactivados** en este repo: sin eso, cada push del espejo a `main`
+correría release-please y abriría PRs de release acá, y los bots de bienvenida
+comentarían nuestros issues. `casa-sync` apaga en cada vuelta todo workflow
+activo que no se llame `casa-*`, así que uno nuevo de upstream no alcanza a
+molestar más de 6 horas.
 
 ## Secret
 

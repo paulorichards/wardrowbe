@@ -27,6 +27,7 @@ concurrency:
 permissions:
   contents: read
   issues: write
+  actions: write # para apagar los workflows de upstream
 
 jobs:
   sync:
@@ -52,6 +53,20 @@ jobs:
           git config user.email "casa-sync@users.noreply.github.com"
           git remote add upstream https://github.com/Anyesh/wardrowbe.git
           git fetch --quiet upstream main --tags
+
+      # Los workflows de upstream no corren en este fork: release-please abriría
+      # PRs de release acá con cada push del espejo, y los bots comentarían
+      # nuestros issues. Si upstream agrega uno nuevo, se apaga en la próxima vuelta.
+      - name: Apagar workflows de upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows" --paginate \
+            --jq '.workflows[] | select(.state == "active") | select(.path | test("/casa-[^/]+$") | not) | "\(.id) \(.path)"' |
+          while read -r id path; do
+            gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/$id/disable"
+            echo "apagado $path" >> "$GITHUB_STEP_SUMMARY"
+          done
 
       - name: Espejar main
         run: |
