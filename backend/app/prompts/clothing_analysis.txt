@@ -24,7 +24,8 @@ PRIMARY_COLOR (required, pick one):
 <<COLORS>>
 
 PATTERN (required, pick one):
-solid, striped, plaid, checkered, floral, graphic, geometric, polka-dot, camouflage, animal-print
+solid, heathered, striped, plaid, checkered, floral, graphic, geometric, polka-dot, camouflage, animal-print
+Use heathered for a single color made of mixed light and dark fibers (heather gray, marled, mélange); solid only when the fabric reads as one flat color.
 
 MATERIAL (optional, pick one or null):
 <<MATERIALS>>
