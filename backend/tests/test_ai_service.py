@@ -305,6 +305,31 @@ class TestTagParsing:
         assert tags.material == "down"
 
 
+    def test_parse_watch_type(self):
+        """A wristwatch is its own type: it must not be dropped or folded into
+        the generic accessories bucket."""
+        service = AIService()
+        tags = service._parse_tags_from_response('{"type": "watch", "primary_color": "silver"}')
+        assert tags.type == "watch"
+
+    def test_watch_is_an_accessory_offered_by_the_prompt(self):
+        from app.services.ai_service import TAGGING_PROMPT
+        from app.utils.garment_vocabulary import TYPES
+
+        assert "watch" in TYPES
+        assert "watch" in TAGGING_PROMPT
+
+    def test_watch_has_a_label_in_every_locale(self):
+        import json
+        from pathlib import Path
+
+        messages = Path(__file__).resolve().parents[2] / "frontend/messages"
+        for constants in messages.glob("*/constants.json"):
+            data = json.loads(constants.read_text(encoding="utf-8"))
+            types = next(v for v in data.values() if isinstance(v, dict) and "scarf" in v)
+            assert types.get("watch"), constants
+
+
 class TestClothingTags:
     """Tests for ClothingTags model."""
 
