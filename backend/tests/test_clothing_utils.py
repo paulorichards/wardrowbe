@@ -614,3 +614,32 @@ def test_fill_dresses_all_three_regions():
     ranked, ranked_types = _typed("dress", "shirt", "jeans", "boots")
     filled = fill_missing_regions([bag], ranked, outfit_types | ranked_types)
     assert filled == [bag, ranked[0], ranked[3]]
+
+
+def test_keeps_only_first_watch():
+    watch_a, watch_b, shirt_id, pants_id = _ids(4)
+    item_type_map = {watch_a: "watch", watch_b: "watch", shirt_id: "shirt", pants_id: "pants"}
+
+    result = deduplicate_by_body_slot([watch_a, shirt_id, watch_b, pants_id], item_type_map)
+
+    assert result == [watch_a, shirt_id, pants_id]
+
+
+def test_mandatory_watch_wins_over_earlier_watch():
+    watch_a, watch_b = _ids(2)
+    item_type_map = {watch_a: "watch", watch_b: "watch"}
+
+    result = deduplicate_by_body_slot(
+        [watch_a, watch_b], item_type_map, mandatory_item_ids={watch_b}
+    )
+
+    assert result == [watch_b]
+
+
+def test_watch_does_not_displace_other_accessories():
+    watch_id, belt_id, scarf_id = _ids(3)
+    item_type_map = {watch_id: "watch", belt_id: "belt", scarf_id: "scarf"}
+
+    result = deduplicate_by_body_slot([watch_id, belt_id, scarf_id], item_type_map)
+
+    assert result == [watch_id, belt_id, scarf_id]

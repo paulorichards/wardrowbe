@@ -36,10 +36,17 @@ def count_composition(type_counts: list[tuple[str | None, int]]) -> WardrobeComp
     )
 
 
+# Accessories claim no slot (an outfit can carry a belt and a scarf), except a watch: you
+# only wear one on the wrist.
+ACCESSORY_TYPE_SLOTS: dict[str, frozenset[str]] = {"watch": frozenset({"wrist"})}
+
+
 def _slots_for_type(item_type: str) -> frozenset[str]:
     role = ITEM_ROLE.get(item_type)
-    if not role or role == "accessory":
+    if not role:
         return frozenset()
+    if role == "accessory":
+        return ACCESSORY_TYPE_SLOTS.get(item_type, frozenset())
     return ROLE_SLOTS.get(role, frozenset({role}))
 
 
