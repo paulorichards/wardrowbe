@@ -1,24 +1,27 @@
 # La rama `casa`
 
 Fork de [Anyesh/wardrowbe](https://github.com/Anyesh/wardrowbe) para el NAS de
-la casa. Los parches se proponen upstream; `casa` existe para correrlos antes
-de que los acepten.
+la casa. `casa` corre nuestros parches encima de cada release de upstream.
+
+⛔ **Los parches NO se proponen upstream** salvo que Paulo lo pida para uno en
+particular (decisión del 2026-10-26). Viven sólo acá.
 
 | Rama | Qué es | Quién la mueve |
 |---|---|---|
 | `main` | espejo exacto de `upstream/main` | `casa-sync`, cada 6 h |
 | `casa` (default) | último release de upstream + nuestros parches + este CI | `casa-sync` al salir un release; nosotros al agregar un parche |
-| `fix/*`, `feat/*` | un parche, nacido de `main`, con su PR upstream | nosotros |
+| `fix/*`, `feat/*` | un parche, nacido de `main` (sin PR upstream) | nosotros |
 
 `.casa/base` dice sobre qué release de upstream está `casa`.
 
 ## El ciclo de un parche
 
-1. Rama desde `main`, commit con conventional commits y su test, PR a upstream.
+1. Rama desde `main`, commit con conventional commits y su test. Sin PR a
+   upstream (ver arriba).
 2. El mismo commit, `cherry-pick` a `casa` → `casa-build` publica imagen.
-3. Cuando upstream lo libera, el rebase de `casa-sync` lo descarta solo. Si el
-   mantenedor lo cambió al aceptarlo, el rebase choca: `casa-sync` abre un
-   issue y `casa` queda como estaba.
+3. Si upstream llega a liberar lo mismo por su cuenta, el rebase de
+   `casa-sync` descarta nuestro parche solo. Si lo hizo distinto, el rebase
+   choca: `casa-sync` abre un issue y `casa` queda como estaba.
 
 ## Imágenes
 
