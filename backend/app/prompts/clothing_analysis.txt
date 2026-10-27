@@ -28,6 +28,7 @@ solid, striped, plaid, checkered, floral, graphic, geometric, polka-dot, camoufl
 
 MATERIAL (optional, pick one or null):
 <<MATERIALS>>
+Use corduroy for fabric with raised vertical ribs (cord, cotelé), even when it is cotton.
 
 FORMALITY (required, pick one):
 <<FORMALITY>>

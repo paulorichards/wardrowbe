@@ -62,6 +62,8 @@ SEASON_ADJACENCY = {
     "winter": ["fall", "spring"],
 }
 
+WARM_SEASONS = {"spring", "summer", "all-season"}
+
 TOP_N = 70
 MIN_ITEMS_FOR_SCORING = 50
 
@@ -142,7 +144,10 @@ def _temp_bucket_score(
     elif band == "hot":
         if warm_tights:
             return 0.05
-        if material in ("cotton", "linen", "silk") or "summer" in seasons:
+        # A light fibre only vouches for heat when the item is not tagged as a
+        # cold-season piece: cotton corduroy or flannel tagged fall/winter is not.
+        fits_warm_seasons = not seasons or bool(WARM_SEASONS & set(seasons))
+        if "summer" in seasons or (material in ("cotton", "linen", "silk") and fits_warm_seasons):
             return 1.0
         elif item_type in WARM_LAYER_TYPES or item_type == "boots":
             return 0.05

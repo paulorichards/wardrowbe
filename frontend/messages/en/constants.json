@@ -40,6 +40,7 @@
   "materials": {
     "canvas": "Canvas",
     "cotton": "Cotton",
+    "corduroy": "Corduroy",
     "denim": "Denim",
     "down": "Down",
     "fleece": "Fleece",
