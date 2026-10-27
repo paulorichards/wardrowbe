@@ -34,7 +34,7 @@
     {"value": "bag", "role": "accessory", "wash_interval": 20},
     {"value": "accessories", "role": "accessory", "wash_interval": 20}
   ],
-  "materials": ["cotton", "denim", "leather", "wool", "polyester", "silk", "linen", "knit", "fleece", "suede", "velvet", "nylon", "canvas", "down", "shearling"],
+  "materials": ["cotton", "denim", "leather", "wool", "polyester", "silk", "linen", "knit", "fleece", "suede", "velvet", "corduroy", "nylon", "canvas", "down", "shearling"],
   "formality": ["very-casual", "casual", "smart-casual", "business-casual", "formal", "very-formal"],
   "occasions": [
     {"value": "casual", "formality": ["very-casual", "casual", "smart-casual"]},

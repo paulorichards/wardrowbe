@@ -100,6 +100,20 @@ class TestWeatherScore:
         item = _item(type="shirt", material="cotton")
         assert _weather_score(item, _weather(temp=30), None) == 1.0
 
+    @pytest.mark.parametrize(
+        ("material", "season", "expected"),
+        [
+            ("cotton", ["fall", "winter"], 0.8),
+            ("cotton", ["spring", "fall"], 1.0),
+            ("cotton", ["all-season"], 1.0),
+            ("corduroy", [], 0.8),
+            ("corduroy", ["summer"], 1.0),
+        ],
+    )
+    def test_hot_light_fibre_needs_a_warm_season(self, material, season, expected):
+        item = _item(type="pants", material=material, season=season)
+        assert _weather_score(item, _weather(temp=30), None) == expected
+
     def test_moderate_all_pass(self):
         item = _item(type="shirt")
         assert _weather_score(item, _weather(temp=18), None) == 1.0

@@ -318,6 +318,11 @@ class TestTagParsing:
         tags = service._parse_tags_from_response('{"type": "jacket", "material": "down"}')
         assert tags.material == "down"
 
+    def test_parse_corduroy_material(self):
+        service = AIService()
+        tags = service._parse_tags_from_response('{"type": "pants", "material": "corduroy"}')
+        assert tags.material == "corduroy"
+
 
 class TestClothingTags:
     """Tests for ClothingTags model."""
