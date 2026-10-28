@@ -11,7 +11,14 @@ from app.models.item import ClothingItem, ItemStatus
 from app.models.outfit import FamilyOutfitRating, Outfit, OutfitItem, OutfitSource, OutfitStatus
 from app.models.user import User
 from app.services.ai_service import AIResponseTruncatedError, AIService, require_internal_ai
-from app.utils.clothing import covered_regions, deduplicate_by_body_slot
+from app.utils.clothing import (
+    build_family_map,
+    covered_regions,
+    deduplicate_by_body_slot,
+    sibling_numbers,
+    siblings_note,
+    variant_display_name,
+)
 from app.utils.garment_vocabulary import render_outfit_prompt
 from app.utils.prompts import load_prompt
 from app.utils.timezone import get_user_today
@@ -62,7 +69,9 @@ class PairingService:
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
-    def _format_item_description(self, item: ClothingItem) -> str:
+    def _format_item_description(
+        self, item: ClothingItem, sibling_nums: list[int] | None = None
+    ) -> str:
         parts = []
 
         # Type and subtype
@@ -91,8 +100,12 @@ class PairingService:
             parts.append(item.formality)
 
         # Name if set
-        if item.name:
-            parts.insert(0, f'"{item.name}"')
+        display_name = variant_display_name(item.name, item.variant_name)
+        if display_name:
+            parts.insert(0, f'"{display_name}"')
+
+        if sibling_nums:
+            parts.append(siblings_note(item_type, sibling_nums))
 
         return " | ".join(parts)
 
@@ -106,9 +119,10 @@ class PairingService:
         number_map: dict[int, UUID] = {source_number: source_item.id}
         lines = []
 
+        siblings = sibling_numbers(list(enumerate(items, 2)))
         for i, item in enumerate(items, 2):
             number_map[i] = item.id
-            desc = self._format_item_description(item)
+            desc = self._format_item_description(item, siblings.get(item.id))
             lines.append(f"[{i}] {desc}")
 
         items_text = "\n".join(lines)
@@ -191,6 +205,11 @@ class PairingService:
 
         # Get available items
         available_items = await self.get_available_items(user, source_item_id)
+        # The other variants of the source garment are not offered: it is already in.
+        source_family = source_item.parent_item_id or source_item.id
+        available_items = [
+            item for item in available_items if (item.parent_item_id or item.id) != source_family
+        ]
         if len(available_items) < 2:
             raise InsufficientItemsError(
                 "Not enough items in wardrobe for pairing. Add more items."
@@ -247,6 +266,8 @@ class PairingService:
         for item in available_items:
             item_type_map[item.id] = (item.type or "").lower()
 
+        family_map = build_family_map([source_item, *available_items])
+
         for pairing in pairings_data[:num_pairings]:
             # Get item numbers from the pairing
             selected_numbers = pairing.get("items", [])
@@ -272,7 +293,10 @@ class PairingService:
             # item it is supposed to feature.
             picked_regions = covered_regions(valid_ids, item_type_map)
             valid_ids = deduplicate_by_body_slot(
-                valid_ids, item_type_map, mandatory_item_ids={source_item.id}
+                valid_ids,
+                item_type_map,
+                mandatory_item_ids={source_item.id},
+                family_map=family_map,
             )
             # Dedup must not leave the top or bottom bare where the model had covered it: a
             # dress dropped for a shirt source would leave the outfit with no bottom.
