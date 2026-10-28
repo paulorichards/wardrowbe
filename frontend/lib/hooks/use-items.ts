@@ -443,6 +443,7 @@ export interface WearHistoryEntry {
       type: string;
       name?: string;
       thumbnail_url?: string;
+      variant_name?: string | null;
     }>;
   };
 }

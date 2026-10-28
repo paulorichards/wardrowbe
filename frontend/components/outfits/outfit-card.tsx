@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { withVariantName } from '@/lib/variant';
 import Image from 'next/image';
 import {
   BookmarkCheck,
@@ -147,7 +148,7 @@ export function OutfitCard({ outfit, onClick, selectMode, selected, onSelect }: 
                 {item.thumbnail_url || item.image_url ? (
                   <Image
                     src={(item.thumbnail_url || item.image_url)!}
-                    alt={item.name || typeLabel(item.type)}
+                    alt={withVariantName(item.name || typeLabel(item.type), item.variant_name)}
                     fill
                     className="object-cover"
                     sizes="(max-width: 640px) 25vw, 15vw"

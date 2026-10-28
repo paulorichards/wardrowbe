@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { withVariantName } from '@/lib/variant';
 import Link from 'next/link';
 import { ThumbsUp, ThumbsDown, Star, ArrowRight, Shirt, Users, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -133,7 +134,7 @@ export function OutfitHistoryCard({ outfit, onFeedback, onPreview }: OutfitHisto
                     type="button"
                     onClick={() => setPreviewItem(item)}
                     className="w-14 h-14 rounded-lg bg-muted overflow-hidden relative border hover:ring-2 ring-primary transition-all"
-                    title={item.name || typeLabel(item.type)}
+                    title={withVariantName(item.name || typeLabel(item.type), item.variant_name)}
                   >
                     {item.thumbnail_url ? (
                       <Image
@@ -239,7 +240,7 @@ export function OutfitHistoryCard({ outfit, onFeedback, onPreview }: OutfitHisto
       <Dialog open={!!previewItem} onOpenChange={(open) => !open && setPreviewItem(null)}>
         <DialogContent className="sm:max-w-md p-0 overflow-hidden [&>button]:hidden">
           <DialogHeader className="p-4 pb-2">
-            <DialogTitle>{previewItem?.name || previewItem?.type || t('itemFallback')}</DialogTitle>
+            <DialogTitle>{previewItem?.name ? withVariantName(previewItem.name, previewItem.variant_name) : previewItem?.type || t('itemFallback')}</DialogTitle>
           </DialogHeader>
           <div className="relative bg-muted">
             <Link href={`/dashboard/wardrobe?item=${previewItem?.id}`} className="block">

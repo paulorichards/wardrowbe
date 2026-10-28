@@ -233,7 +233,9 @@
       "wearsSinceWash": "洗滌後穿著次數：{current}/{max}",
       "wornCount": "{count, plural, one {已穿著 # 次} other {已穿著 # 次}}"
     },
-    "washInterval": "洗滌間隔"
+    "washInterval": "洗滌間隔",
+    "variants": "款式",
+    "variantOf": "{name} 的款式"
   },
   "lightbox": {
     "openInWardrobe": "在衣櫥中開啟"
@@ -277,5 +279,6 @@
     "daysAgo": "{days} 天前穿過",
     "today": "今天穿過",
     "yesterday": "昨天穿過"
-  }
+  },
+  "variantCount": "{count, plural, other {# 個款式}}"
 }
