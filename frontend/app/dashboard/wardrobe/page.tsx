@@ -136,6 +136,13 @@ function ItemCard({
             <Heart className="h-4 w-4 fill-red-500 text-red-500" />
           </div>
         )}
+        {(item.variant_count ?? 0) > 0 && (
+          <div className="absolute bottom-2 left-2 z-10">
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+              {t('variantCount', { count: item.variant_count ?? 0 })}
+            </Badge>
+          </div>
+        )}
         {item.needs_wash && (
           <div className="absolute bottom-2 right-2 z-10">
             <div className="bg-amber-500/90 text-white rounded-full p-1" title={t('needsWash')}>

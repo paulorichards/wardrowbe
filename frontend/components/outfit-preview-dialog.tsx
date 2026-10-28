@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { withVariantName } from '@/lib/variant';
 import Link from 'next/link';
 import { CalendarDays, ChevronLeft, ChevronRight, X, RotateCcw, RotateCw, Loader2, Users, Star, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -211,7 +212,9 @@ export function OutfitPreviewDialog({ outfit, open, onClose, isOwner = true }: O
               </div>
             </div>
             {currentItem.name && (
-              <p className="font-medium break-words">{currentItem.name}</p>
+              <p className="font-medium break-words">
+                {withVariantName(currentItem.name, currentItem.variant_name)}
+              </p>
             )}
             <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5 mt-1" asChild>
               <Link href={`/dashboard/wardrobe?item=${currentItem.id}`}>

@@ -233,7 +233,9 @@
       "wearsSinceWash": "Utilizzi dal lavaggio: {current}/{max}",
       "wornCount": "{count, plural, one {Indossato # volta} other {Indossato # volte}}"
     },
-    "washInterval": "Intervallo lavaggio"
+    "washInterval": "Intervallo lavaggio",
+    "variants": "Varianti",
+    "variantOf": "Variante di {name}"
   },
   "lightbox": {
     "openInWardrobe": "Apri nel guardaroba"
@@ -277,5 +279,6 @@
     "daysAgo": "Indossato {days}g fa",
     "today": "Indossato oggi",
     "yesterday": "Indossato ieri"
-  }
+  },
+  "variantCount": "{count, plural, one {# variante} other {# varianti}}"
 }
