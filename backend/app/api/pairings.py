@@ -60,6 +60,8 @@ class PairingItemResponse(BaseModel):
     type: str
     subtype: str | None = None
     name: str | None = None
+    parent_item_id: UUID | None = None
+    variant_name: str | None = None
     primary_color: str | None = None
     colors: list[str] = []
     image_path: str
@@ -139,6 +141,8 @@ def pairing_to_response(outfit: Outfit) -> PairingResponse:
                 type=item.type,
                 subtype=item.subtype,
                 name=item.name,
+                parent_item_id=item.parent_item_id,
+                variant_name=item.variant_name,
                 primary_color=item.primary_color,
                 colors=item.colors or [],
                 image_path=item.image_path,

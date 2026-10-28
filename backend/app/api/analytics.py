@@ -151,7 +151,8 @@ async def get_analytics(
     # === Wardrobe Stats ===
     # Total items and status breakdown
     items_query = select(
-        func.count(ClothingItem.id).label("total"),
+        # Families, not rows: a variant is the same garment as its main item.
+        func.count(ClothingItem.id).filter(ClothingItem.parent_item_id.is_(None)).label("total"),
         func.sum(case((ClothingItem.status == ItemStatus.ready, 1), else_=0)).label("ready"),
         func.sum(case((ClothingItem.status == ItemStatus.processing, 1), else_=0)).label(
             "processing"

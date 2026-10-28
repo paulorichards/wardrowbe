@@ -41,6 +41,7 @@ from app.services.weather_service import (
     WeatherServiceError,
 )
 from app.utils.clothing import (
+    build_family_map,
     can_complete_outfit,
     canonical_item_order,
     deduplicate_by_body_slot,
@@ -48,6 +49,9 @@ from app.utils.clothing import (
     has_wearable_piece,
     missing_regions,
     remove_legwear,
+    sibling_numbers,
+    siblings_note,
+    variant_display_name,
 )
 from app.utils.garment_vocabulary import render_outfit_prompt
 from app.utils.preference_defaults import (
@@ -156,6 +160,7 @@ def resolve_outfit_items(
     item_type_map: dict[UUID, str],
     mandatory_item_ids: set[UUID] | None,
     drop_legwear: bool,
+    family_map: dict[UUID, UUID] | None = None,
 ) -> list[UUID]:
     valid_ids = picked_item_ids(outfit_data, number_map)
 
@@ -166,7 +171,7 @@ def resolve_outfit_items(
             valid_ids.insert(0, mid)
 
     valid_ids = deduplicate_by_body_slot(
-        valid_ids, item_type_map, mandatory_item_ids=mandatory_item_ids
+        valid_ids, item_type_map, mandatory_item_ids=mandatory_item_ids, family_map=family_map
     )
     # Prompt wording alone does not keep small models from adding tights on a hot
     # day; tights the user asked for stay.
@@ -179,9 +184,14 @@ def fill_best_partial(
     partials: list[tuple[dict, list[UUID]]],
     ranked_ids: list[UUID],
     item_type_map: dict[UUID, str],
+    family_map: dict[UUID, UUID] | None = None,
 ) -> tuple[dict, list[UUID]] | None:
     filled = [
-        (outfit_data, item_ids, fill_missing_regions(item_ids, ranked_ids, item_type_map))
+        (
+            outfit_data,
+            item_ids,
+            fill_missing_regions(item_ids, ranked_ids, item_type_map, family_map),
+        )
         for outfit_data, item_ids in partials
     ]
     completed = [f for f in filled if not missing_regions(f[2], item_type_map)]
@@ -358,6 +368,7 @@ class RecommendationService:
             items_with_numbers.append((i, item))
 
         id_to_number = {item.id: num for num, item in items_with_numbers}
+        siblings = sibling_numbers(items_with_numbers)
 
         for num, item in items_with_numbers:
             parts = []
@@ -396,8 +407,9 @@ class RecommendationService:
             if fit:
                 parts.append(f"{fit} fit")
 
-            if item.name:
-                parts.insert(0, f'"{item.name}"')
+            display_name = variant_display_name(item.name, item.variant_name)
+            if display_name:
+                parts.insert(0, f'"{display_name}"')
 
             # Recency annotation
             if item.last_worn_at:
@@ -414,6 +426,9 @@ class RecommendationService:
                 if pair_nums:
                     refs = ", ".join(f"[{n}]" for n in pair_nums)
                     parts.append(f"pairs well with: {refs}")
+
+            if item.id in siblings:
+                parts.append(siblings_note(item_type, siblings[item.id]))
 
             line = f"[{num}] {' | '.join(parts)}"
             lines.append(line)
@@ -884,12 +899,28 @@ class RecommendationService:
             )
 
         mandatory_ids = set(include_items) if include_items else None
+        if mandatory_ids:
+            # The other variants of a requested garment are not offered: the outfit already
+            # has that garment.
+            requested_families = {
+                item.parent_item_id or item.id for item in candidates if item.id in mandatory_ids
+            }
+            candidates = [
+                item
+                for item in candidates
+                if item.id in mandatory_ids
+                or (item.parent_item_id or item.id) not in requested_families
+            ]
+        family_map = build_family_map(candidates)
         item_type_map = {item.id: (item.type or "").lower() for item in candidates}
         if include_items:
             requested = deduplicate_by_body_slot(
-                list(include_items), item_type_map, mandatory_item_ids=mandatory_ids
+                list(include_items),
+                item_type_map,
+                mandatory_item_ids=mandatory_ids,
+                family_map=family_map,
             )
-            if not can_complete_outfit(requested, item_type_map):
+            if not can_complete_outfit(requested, item_type_map, family_map):
                 raise ValueError(
                     "The selected items cannot make a complete outfit with the rest of your "
                     "wardrobe."
@@ -915,7 +946,7 @@ class RecommendationService:
                     continue
 
                 item_ids = resolve_outfit_items(
-                    cached, number_map, item_type_map, mandatory_ids, drop_legwear
+                    cached, number_map, item_type_map, mandatory_ids, drop_legwear, family_map
                 )
                 if not has_wearable_piece(item_ids, item_type_map) or missing_regions(
                     item_ids, item_type_map
@@ -1016,7 +1047,7 @@ class RecommendationService:
                 outfit_data["_ai_model"] = result.model
                 outfit_data["_ai_endpoint"] = result.endpoint
                 item_ids = resolve_outfit_items(
-                    outfit_data, number_map, item_type_map, mandatory_ids, drop_legwear
+                    outfit_data, number_map, item_type_map, mandatory_ids, drop_legwear, family_map
                 )
                 # An answer with nothing usable fails rather than being built from scratch
                 # under a headline the AI wrote for other pieces.
@@ -1026,7 +1057,9 @@ class RecommendationService:
                     ranking = rank_by_fit(
                         candidates, weather, occasion, current_season, preferences, learned_prefs
                     )
-                    completed = fill_best_partial([(outfit_data, item_ids)], ranking, item_type_map)
+                    completed = fill_best_partial(
+                        [(outfit_data, item_ids)], ranking, item_type_map, family_map
+                    )
                     if completed is None:
                         raise AIRecommendationError(INCOMPLETE_OUTFIT_ERROR)
                     outfit_data, item_ids = completed
@@ -1051,7 +1084,7 @@ class RecommendationService:
                 od["_ai_model"] = result.model
                 od["_ai_endpoint"] = result.endpoint
                 item_ids = resolve_outfit_items(
-                    od, number_map, item_type_map, mandatory_ids, drop_legwear
+                    od, number_map, item_type_map, mandatory_ids, drop_legwear, family_map
                 )
                 missing = missing_regions(item_ids, item_type_map)
                 if not has_wearable_piece(item_ids, item_type_map):
@@ -1069,7 +1102,7 @@ class RecommendationService:
                 ranking = rank_by_fit(
                     candidates, weather, occasion, current_season, preferences, learned_prefs
                 )
-                completed = fill_best_partial(partials, ranking, item_type_map)
+                completed = fill_best_partial(partials, ranking, item_type_map, family_map)
                 if completed is None:
                     raise AIRecommendationError(INCOMPLETE_OUTFIT_ERROR)
                 chosen = [completed]

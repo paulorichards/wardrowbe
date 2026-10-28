@@ -562,6 +562,53 @@ class TestFormatItemsEnriched:
         assert "pairs well with:" in text
 
 
+class TestFormatItemsVariants:
+    def _lines(self, items):
+        service = RecommendationService.__new__(RecommendationService)
+        scored = [ScoredItem(item=i) for i in items]
+        text, _ = service._format_items_for_prompt(scored, {}, date(2026, 3, 8))
+        return text.splitlines()
+
+    def test_variants_name_their_variant_and_list_their_siblings(self):
+        main_id = uuid4()
+        main = _make_item(
+            id=main_id, type="watch", name="Bulova", variant_name="Steel bracelet", colors=["gray"]
+        )
+        strap = _make_item(
+            type="watch",
+            name="Bulova",
+            variant_name="Blue leather strap",
+            parent_item_id=main_id,
+            colors=["blue"],
+        )
+        shirt = _make_item(name="Oxford")
+        lines = self._lines([main, shirt, strap])
+        assert lines[0].startswith('[1] "Bulova – Steel bracelet" | watch')
+        assert lines[0].endswith("same watch as [3]: pick at most one")
+        assert lines[2].startswith('[3] "Bulova – Blue leather strap" | watch')
+        assert lines[2].endswith("same watch as [1]: pick at most one")
+
+    def test_three_siblings_list_both_others(self):
+        main_id = uuid4()
+        rows = [
+            _make_item(id=main_id, type="watch", name="W", variant_name="a"),
+            _make_item(type="watch", name="W", variant_name="b", parent_item_id=main_id),
+            _make_item(type="watch", name="W", variant_name="c", parent_item_id=main_id),
+        ]
+        assert self._lines(rows)[1].endswith("same watch as [1], [3]: pick at most one")
+
+    def test_items_without_a_family_keep_their_exact_line(self):
+        item = _make_item(name="Oxford", subtype="oxford")
+        line = self._lines([item, _make_item()])[0]
+        assert line == '[1] "Oxford" | oxford (shirt) | blue | casual | never worn'
+
+    def test_a_variant_whose_siblings_are_not_candidates_has_no_pick_one_note(self):
+        variant = _make_item(type="watch", name="W", variant_name="strap", parent_item_id=uuid4())
+        line = self._lines([variant])[0]
+        assert '"W – strap"' in line
+        assert "pick at most one" not in line
+
+
 class TestFormatPrefsOccasion:
     def test_occasion_insights(self):
         service = RecommendationService.__new__(RecommendationService)
@@ -1070,3 +1117,101 @@ class TestHotDayLegwear:
         await self._hot_day_outfits(db_session, test_user, [[3, 2, 4]], cached={"items": [2, 4]})
         assert self.reasonings == ["AI 1"]
         self.ai.generate_text.assert_awaited_once()
+
+
+class TestVariantsInOutfits:
+    async def _wardrobe(self, db_session, user):
+        def row(kind, **kw):
+            return ClothingItem(
+                user_id=user.id,
+                type=kind,
+                image_path=f"test/{uuid4()}.jpg",
+                status=ItemStatus.ready,
+                primary_color="black",
+                **kw,
+            )
+
+        shirt, pants, shoes, belt = row("shirt"), row("pants"), row("sneakers"), row("belt")
+        db_session.add_all([shirt, pants, shoes, belt])
+        await db_session.commit()
+        belt_variant = row("belt", parent_item_id=belt.id, variant_name="Brown buckle")
+        db_session.add(belt_variant)
+        await db_session.commit()
+        for obj in (user, shirt, pants, shoes, belt, belt_variant):
+            await db_session.refresh(obj)
+        return shirt, pants, shoes, belt, belt_variant
+
+    async def _generate(self, db_session, user, rows, ai_items, include=()):
+        user.preferences = None
+        ai = MagicMock()
+        ai.generate_text = AsyncMock(
+            return_value=MagicMock(
+                content=json.dumps({"outfits": [{"items": ai_items, "headline": "Look"}]}),
+                model="m",
+                endpoint="e",
+            )
+        )
+        service = RecommendationService(db_session)
+        real_format = service._format_items_for_prompt
+        offered = []
+
+        def format_items(scored, pairs, today):
+            text, number_map = real_format(scored, pairs, today)
+            offered.append(text)
+            # Number the rows in the order given, so the AI answer is deterministic.
+            return text, {n: r.id for n, r in enumerate(rows, 1)}
+
+        with (
+            patch("app.services.recommendation_service.AIService", return_value=ai),
+            patch(
+                "app.services.recommendation_service.pop_suggestion",
+                AsyncMock(return_value=None),
+            ),
+            patch("app.services.recommendation_service.push_suggestions", AsyncMock()),
+            patch.object(service, "_format_items_for_prompt", format_items),
+        ):
+            outfits = await service.generate_recommendations(
+                user=user,
+                occasion="casual",
+                weather_override=_weather(temp=20),
+                include_items=[r.id for r in include],
+                time_of_day=TimeOfDay.afternoon,
+                count=1,
+            )
+        return outfits, offered
+
+    @pytest.mark.asyncio
+    async def test_an_ai_answer_with_two_variants_of_a_belt_keeps_one(self, db_session, test_user):
+        shirt, pants, shoes, belt, belt_variant = await self._wardrobe(db_session, test_user)
+        rows = [shirt, pants, shoes, belt, belt_variant]
+        outfits, _ = await self._generate(db_session, test_user, rows, [1, 2, 3, 4, 5])
+        assert {oi.item_id for oi in outfits[0].items} == {shirt.id, pants.id, shoes.id, belt.id}
+
+    @pytest.mark.asyncio
+    async def test_a_requested_variant_wins_and_its_siblings_are_not_offered(
+        self, db_session, test_user
+    ):
+        shirt, pants, shoes, belt, belt_variant = await self._wardrobe(db_session, test_user)
+        rows = [shirt, pants, shoes, belt_variant]
+        outfits, offered = await self._generate(
+            db_session, test_user, rows, [1, 2, 3, 4], include=[belt_variant]
+        )
+        assert belt.id not in {oi.item_id for oi in outfits[0].items}
+        assert belt_variant.id in {oi.item_id for oi in outfits[0].items}
+        assert "pick at most one" not in offered[0]
+        assert offered[0].count("[") == 4
+
+    @pytest.mark.asyncio
+    async def test_wearing_a_variant_does_not_mark_its_main_item_as_worn(
+        self, db_session, test_user
+    ):
+        from app.services.item_service import ItemService
+
+        *_, belt, belt_variant = await self._wardrobe(db_session, test_user)
+        user, belt_id, variant_id = test_user, belt.id, belt_variant.id
+        await ItemService(db_session).record_wears(user.id, [variant_id], date(2026, 3, 8))
+        await db_session.commit()
+        await db_session.refresh(user)
+        worn = await RecommendationService(db_session)._get_recently_worn_dates(user)
+        assert variant_id in worn
+        assert belt_id not in worn

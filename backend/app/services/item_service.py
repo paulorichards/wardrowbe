@@ -15,6 +15,7 @@ from app.models.item import (
     WashHistory,
 )
 from app.schemas.item import DEFAULT_WASH_INTERVALS, ItemCreate, ItemFilter, ItemUpdate
+from app.services.variant_service import variant_color_match
 
 
 class ItemService:
@@ -69,7 +70,9 @@ class ItemService:
         if filters.favorite is not None:
             query = query.where(ClothingItem.favorite == filters.favorite)
         if filters.colors:
-            query = query.where(ClothingItem.colors.overlap(filters.colors))
+            query = query.where(variant_color_match(filters.colors))
+        if not filters.include_variants:
+            query = query.where(ClothingItem.parent_item_id.is_(None))
 
         # Archive filter
         query = query.where(ClothingItem.is_archived == filters.is_archived)
@@ -125,7 +128,10 @@ class ItemService:
         after_id: UUID | None = None,
         limit: int | None = None,
     ) -> list[UUID]:
-        query = select(ClothingItem.id).where(ClothingItem.user_id == user_id)
+        # Bulk selections walk the visible wardrobe: variants follow their main item.
+        query = select(ClothingItem.id).where(
+            ClothingItem.user_id == user_id, ClothingItem.parent_item_id.is_(None)
+        )
 
         if type_filter:
             query = query.where(ClothingItem.type == type_filter)
@@ -423,6 +429,11 @@ class ItemService:
         item.archived_at = datetime.now(UTC)
         item.archive_reason = reason
         item.status = ItemStatus.archived
+        for variant in item.variants:
+            variant.is_archived = True
+            variant.archived_at = item.archived_at
+            variant.archive_reason = reason
+            variant.status = ItemStatus.archived
         await self.db.flush()
         # Re-fetch with eager loading to ensure relationships are properly loaded
         result = await self.get_by_id(item.id, item.user_id)
@@ -433,6 +444,11 @@ class ItemService:
         item.archived_at = None
         item.archive_reason = None
         item.status = ItemStatus.ready
+        for variant in item.variants:
+            variant.is_archived = False
+            variant.archived_at = None
+            variant.archive_reason = None
+            variant.status = ItemStatus.ready
         await self.db.flush()
         # Re-fetch with eager loading to ensure relationships are properly loaded
         result = await self.get_by_id(item.id, item.user_id)

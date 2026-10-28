@@ -233,7 +233,9 @@
       "wearsSinceWash": "세탁 후 착용: {current}/{max}",
       "wornCount": "{count, plural, other {#회 착용}}"
     },
-    "washInterval": "세탁 주기"
+    "washInterval": "세탁 주기",
+    "variants": "변형",
+    "variantOf": "{name}의 변형"
   },
   "lightbox": {
     "openInWardrobe": "옷장에서 열기"
@@ -277,5 +279,6 @@
     "daysAgo": "{days}일 전 착용",
     "today": "오늘 착용",
     "yesterday": "어제 착용"
-  }
+  },
+  "variantCount": "{count, plural, other {#개 변형}}"
 }

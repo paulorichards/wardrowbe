@@ -643,3 +643,81 @@ def test_watch_does_not_displace_other_accessories():
     result = deduplicate_by_body_slot([watch_id, belt_id, scarf_id], item_type_map)
 
     assert result == [watch_id, belt_id, scarf_id]
+
+
+class TestVariantFamilies:
+    def test_a_second_variant_of_a_slotless_accessory_is_dropped(self):
+        belt, belt_variant, shirt = _ids(3)
+        item_type_map = {belt: "belt", belt_variant: "belt", shirt: "shirt"}
+        family_map = {belt: belt, belt_variant: belt, shirt: shirt}
+        result = deduplicate_by_body_slot(
+            [belt, belt_variant, shirt], item_type_map, family_map=family_map
+        )
+        assert result == [belt, shirt]
+
+    def test_without_a_family_map_siblings_behave_as_before(self):
+        belt, belt_variant = _ids(2)
+        item_type_map = {belt: "belt", belt_variant: "belt"}
+        assert deduplicate_by_body_slot([belt, belt_variant], item_type_map) == [
+            belt,
+            belt_variant,
+        ]
+
+    def test_a_mandatory_variant_beats_an_earlier_sibling(self):
+        belt, belt_variant = _ids(2)
+        item_type_map = {belt: "belt", belt_variant: "belt"}
+        result = deduplicate_by_body_slot(
+            [belt, belt_variant],
+            item_type_map,
+            mandatory_item_ids={belt_variant},
+            family_map={belt: belt, belt_variant: belt},
+        )
+        assert result == [belt_variant]
+
+    def test_variants_of_different_garments_both_stay(self):
+        belt_a, belt_b = _ids(2)
+        item_type_map = {belt_a: "belt", belt_b: "belt"}
+        result = deduplicate_by_body_slot(
+            [belt_a, belt_b], item_type_map, family_map={belt_a: belt_a, belt_b: belt_b}
+        )
+        assert result == [belt_a, belt_b]
+
+    def test_a_sibling_dropped_for_its_family_does_not_claim_a_slot(self):
+        watch, watch_variant, other_watch = _ids(3)
+        item_type_map = {watch: "watch", watch_variant: "watch", other_watch: "watch"}
+        family_map = {watch: watch, watch_variant: watch, other_watch: other_watch}
+        result = deduplicate_by_body_slot(
+            [watch, watch_variant, other_watch], item_type_map, family_map=family_map
+        )
+        assert result == [watch]
+
+    def test_the_fill_does_not_add_a_sibling_of_a_picked_item(self):
+        shirt, shoes, shoes_variant, other_shoes = _ids(4)
+        item_type_map = {
+            shirt: "shirt",
+            shoes: "sneakers",
+            shoes_variant: "sneakers",
+            other_shoes: "sneakers",
+        }
+        # Shoes are taken already, so nothing is added either way; the pants are the gap.
+        pants, pants_variant = _ids(2)
+        item_type_map.update({pants: "pants", pants_variant: "pants"})
+        family_map = {pants: pants, pants_variant: pants}
+        result = fill_missing_regions(
+            [shirt, shoes], [pants_variant, pants], item_type_map, family_map
+        )
+        assert result == [shirt, shoes, pants_variant]
+
+    def test_can_complete_ignores_siblings_of_the_items_already_chosen(self):
+        shirt, shoes, pants, pants_variant = _ids(4)
+        item_type_map = {
+            shirt: "shirt",
+            shoes: "sneakers",
+            pants: "pants",
+            pants_variant: "pants",
+        }
+        family_map = {pants: pants, pants_variant: pants}
+        # Pants chosen, so its variant is no way to dress the lower body again; still complete.
+        assert can_complete_outfit([shirt, shoes, pants], item_type_map, family_map)
+        # With only the shirt chosen, the pants family can still finish the outfit.
+        assert can_complete_outfit([shirt, shoes], item_type_map, family_map)

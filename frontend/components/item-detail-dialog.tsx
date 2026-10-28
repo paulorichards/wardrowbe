@@ -60,7 +60,7 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
-import { useUpdateItem, useDeleteItem, useReanalyzeItem, useRotateImage, useRemoveBackground, useRestoreOriginal, useReplaceItemImage, useLogWear, useLogWash, useWashHistory, useItemWearStats, useItemWearHistory, useAddItemImage, useDeleteItemImage, useSetPrimaryImage } from '@/lib/hooks/use-items';
+import { useItem, useUpdateItem, useDeleteItem, useReanalyzeItem, useRotateImage, useRemoveBackground, useRestoreOriginal, useReplaceItemImage, useLogWear, useLogWash, useWashHistory, useItemWearStats, useItemWearHistory, useAddItemImage, useDeleteItemImage, useSetPrimaryImage } from '@/lib/hooks/use-items';
 import { CLOTHING_SUBTYPES, Item } from '@/lib/types';
 import {
   useClothingTypes,
@@ -82,6 +82,7 @@ import { GeneratePairingsDialog } from '@/components/generate-pairings-dialog';
 import { useFeatures } from '@/lib/hooks/use-features';
 import { useLocale, useTranslations } from 'next-intl';
 import { formatDate } from '@/lib/utils';
+import { withVariantName } from '@/lib/variant';
 
 interface ItemDetailDialogProps {
   item: Item | null;
@@ -164,6 +165,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
   const { data: features } = useFeatures();
   const logWear = useLogWear();
   const logWash = useLogWash();
+  const { data: parentItem } = useItem(item?.parent_item_id ?? '');
   const { data: washHistory } = useWashHistory(item?.id || '');
   const { data: wearStats } = useItemWearStats(item?.id || '');
   const { data: wearHistory } = useItemWearHistory(item?.id || '', 20);
@@ -336,7 +338,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                 width before a flex-1 sibling does, a long name squeezed the
                 actions row and pushed edit and replace-image out of view. */}
             <DialogTitle className="text-xl min-w-0 truncate max-w-[45%] sm:max-w-none sm:flex-1">
-              {item.name || (typeInfo ? typeInfo.label : item.type)}
+              {withVariantName(item.name || (typeInfo ? typeInfo.label : item.type), item.variant_name)}
             </DialogTitle>
             {/* The action row scrolls sideways once it stops fitting, because
                 the dialog clips its own overflow: without this the buttons
@@ -778,6 +780,45 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                         {t('unrecognizedType', { value: unrecognizedType })}
                       </p>
                     )}
+                    {item.parent_item_id && (
+                      <p className="text-sm text-muted-foreground">
+                        {t('variantOf', {
+                          name: parentItem?.name || (parentItem ? typeLabel(parentItem.type) : '…'),
+                        })}
+                      </p>
+                    )}
+                    {item.variants && item.variants.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="text-sm font-medium">{t('variants')}</p>
+                        <ul className="space-y-1">
+                          {item.variants.map((v) => {
+                            const hex = clothingColors.find((c) => c.value === v.primary_color)?.hex;
+                            return (
+                              <li key={v.id} className="flex items-center gap-2 text-sm">
+                                <div className="relative w-8 h-8 rounded bg-muted overflow-hidden shrink-0">
+                                  {v.thumbnail_url && (
+                                    <Image
+                                      src={v.thumbnail_url}
+                                      alt={v.variant_name || ''}
+                                      fill
+                                      className="object-cover"
+                                      sizes="32px"
+                                    />
+                                  )}
+                                </div>
+                                {hex && (
+                                  <div
+                                    className="w-3.5 h-3.5 rounded-full border shrink-0"
+                                    style={{ backgroundColor: hex }}
+                                  />
+                                )}
+                                <span className="truncate">{v.variant_name}</span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
                     {item.brand && (
                       <div className="flex items-center gap-2 text-sm">
                         <Tag className="h-4 w-4 text-muted-foreground" />
@@ -963,7 +1004,7 @@ export function ItemDetailDialog({ item, open, onOpenChange }: ItemDetailDialogP
                                       <div
                                         key={oi.id}
                                         className="w-5 h-5 rounded-full bg-muted border-2 border-background overflow-hidden"
-                                        title={oi.name || typeLabel(oi.type)}
+                                        title={withVariantName(oi.name || typeLabel(oi.type), oi.variant_name)}
                                       >
                                         {oi.thumbnail_url && (
                                           <Image

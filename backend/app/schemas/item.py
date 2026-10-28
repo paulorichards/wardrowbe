@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 from app.models.item import ProcessingKind, TaggingStatus
 from app.schemas.color import ColorList, ColorName
 from app.schemas.outfit import Occasion
+from app.schemas.variant import VariantSummary
 from app.utils.garment_vocabulary import DEFAULT_WASH_INTERVALS
 from app.utils.signed_urls import sign_image_url, sign_optional
 
@@ -61,6 +62,7 @@ class ItemUpdate(BaseModel):
     colors: ColorList | None = None
     primary_color: ColorName | None = None
     wash_interval: int | None = None
+    variant_name: str | None = Field(None, max_length=100)
 
 
 class ItemResponse(ItemBase):
@@ -125,6 +127,9 @@ class ItemResponse(ItemBase):
     wash_interval: int | None = None
     needs_wash: bool = False
     additional_images: list["ItemImageResponse"] = Field(default_factory=list)
+    parent_item_id: UUID | None = None
+    variant_name: str | None = None
+    variants: list[VariantSummary] = Field(default_factory=list)
     is_archived: bool = False
     archived_at: datetime | None = None
     archive_reason: str | None = None
@@ -145,6 +150,11 @@ class ItemResponse(ItemBase):
     @property
     def medium_url(self) -> str | None:
         return sign_optional(self.medium_path)
+
+    @computed_field
+    @property
+    def variant_count(self) -> int:
+        return len(self.variants)
 
     @computed_field
     @property
@@ -216,6 +226,7 @@ class ItemFilter(BaseModel):
     favorite: bool | None = None
     needs_wash: bool | None = None
     is_archived: bool = False
+    include_variants: bool = False
     search: str | None = None
     sort_by: str | None = None
     sort_order: str = "desc"

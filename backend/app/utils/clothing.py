@@ -50,11 +50,27 @@ def _slots_for_type(item_type: str) -> frozenset[str]:
     return ROLE_SLOTS.get(role, frozenset({role}))
 
 
+FamilyMap = dict[UUID, UUID]
+
+
+def build_family_map(items) -> FamilyMap:
+    """Map each item id to its family key: the main item's id for a variant (a row with
+    parent_item_id), its own id otherwise. Two items with the same key are one garment."""
+    return {item.id: item.parent_item_id or item.id for item in items}
+
+
+def _family(item_id: UUID, family_map: FamilyMap | None) -> UUID:
+    return family_map.get(item_id, item_id) if family_map else item_id
+
+
 def deduplicate_by_body_slot(
     item_ids: list[UUID],
     item_type_map: dict[UUID, str],
     mandatory_item_ids: set[UUID] | None = None,
+    family_map: FamilyMap | None = None,
 ) -> list[UUID]:
+    """Keep at most one item per body slot, and (given `family_map`) at most one variant of
+    each garment, even when its type claims no slot."""
     requested = mandatory_item_ids or set()
 
     # A mandatory item only claims its slots if the caller actually passed it in item_ids;
@@ -70,9 +86,17 @@ def deduplicate_by_body_slot(
     single_slot = [iid for iid in rest if iid not in multi_slot_ids]
 
     claimed: dict[str, UUID] = {}
+    claimed_families: dict[UUID, UUID] = {}
     kept: set[UUID] = set()
     for iid in mandatory + multi_slot + single_slot:
         item_type = item_type_map.get(iid, "")
+        family = _family(iid, family_map)
+        if family in claimed_families:
+            logger.warning(
+                f"Removing {item_type} item {iid}: variant of the same garment as "
+                f"{claimed_families[family]}"
+            )
+            continue
         slots = _slots_for_type(item_type)
         taken = next((slot for slot in sorted(slots) if slot in claimed), None)
         if taken:
@@ -82,6 +106,7 @@ def deduplicate_by_body_slot(
             continue
         for slot in slots:
             claimed[slot] = iid
+        claimed_families[family] = iid
         kept.add(iid)
     return [iid for iid in item_ids if iid in kept]
 
@@ -131,13 +156,16 @@ def _fill_options(
     item_type_map: dict[UUID, str],
     taken: frozenset[UUID],
     claimed: frozenset[str],
+    family_map: FamilyMap | None = None,
 ) -> list[tuple[UUID, int]]:
+    taken_families = {_family(t, family_map) for t in taken}
     # A piece may only cover regions that are still missing and take free slots, so that
     # a dress never lands on trousers and a hoodie never goes under a coat.
     fits = [
         iid
         for iid in rank
         if iid not in taken
+        and _family(iid, family_map) not in taken_families
         and region in _regions(item_type_map.get(iid, ""))
         and _regions(item_type_map.get(iid, "")) <= remaining
         and not _slots_for_type(item_type_map.get(iid, "")) & claimed
@@ -170,12 +198,15 @@ def _best_fill(
     item_type_map: dict[UUID, str],
     taken: frozenset[UUID],
     claimed: frozenset[str],
+    family_map: FamilyMap | None = None,
 ) -> list[tuple[UUID, int]]:
     if not remaining:
         return []
     region = next(r for r in REGION_SLOTS if r in remaining)
-    plans = [_best_fill(remaining - {region}, rank, item_type_map, taken, claimed)]
-    for pick, pick_rank in _fill_options(region, remaining, rank, item_type_map, taken, claimed):
+    plans = [_best_fill(remaining - {region}, rank, item_type_map, taken, claimed, family_map)]
+    for pick, pick_rank in _fill_options(
+        region, remaining, rank, item_type_map, taken, claimed, family_map
+    ):
         pick_type = item_type_map[pick]
         rest = _best_fill(
             remaining - _regions(pick_type),
@@ -183,6 +214,7 @@ def _best_fill(
             item_type_map,
             taken | {pick},
             claimed | _slots_for_type(pick_type),
+            family_map,
         )
         plans.append([(pick, pick_rank), *rest])
     # The plan that dresses the most regions wins, then the one whose picks rank best,
@@ -196,11 +228,18 @@ def _best_fill(
     )
 
 
-def can_complete_outfit(item_ids: list[UUID], item_type_map: dict[UUID, str]) -> bool:
+def can_complete_outfit(
+    item_ids: list[UUID], item_type_map: dict[UUID, str], family_map: FamilyMap | None = None
+) -> bool:
     # Looser than the fill, because an AI answer may add a piece that also covers a region
     # already dressed (a hoodie over a dress); only free slots limit it. Items of one type
     # share slots and regions, so searching types keeps this cheap on a large wardrobe.
-    others = {t for iid, t in item_type_map.items() if iid not in item_ids}
+    used_families = {_family(iid, family_map) for iid in item_ids}
+    others = {
+        t
+        for iid, t in item_type_map.items()
+        if iid not in item_ids and _family(iid, family_map) not in used_families
+    }
 
     def reachable(remaining: frozenset[str], claimed: frozenset[str]) -> bool:
         if not remaining:
@@ -217,7 +256,10 @@ def can_complete_outfit(item_ids: list[UUID], item_type_map: dict[UUID, str]) ->
 
 
 def fill_missing_regions(
-    item_ids: list[UUID], ranked_candidate_ids: list[UUID], item_type_map: dict[UUID, str]
+    item_ids: list[UUID],
+    ranked_candidate_ids: list[UUID],
+    item_type_map: dict[UUID, str],
+    family_map: FamilyMap | None = None,
 ) -> list[UUID]:
     claimed = frozenset().union(*(_slots_for_type(item_type_map.get(iid, "")) for iid in item_ids))
     plan = _best_fill(
@@ -226,6 +268,7 @@ def fill_missing_regions(
         item_type_map,
         frozenset(item_ids),
         claimed,
+        family_map,
     )
     added = [iid for iid, _ in plan]
     for iid in added:
@@ -261,3 +304,28 @@ def canonical_item_order(item_ids: list[UUID], item_type_map: dict[UUID, str]) -
         return (role_idx, original_positions[item_id])
 
     return sorted(item_ids, key=sort_key)
+
+
+def variant_display_name(name: str | None, variant_name: str | None) -> str | None:
+    """ "<name> – <variant_name>" for a garment with variants; the plain name otherwise."""
+    if name and variant_name:
+        return f"{name} – {variant_name}"
+    return name or variant_name
+
+
+def sibling_numbers(items_with_numbers: list[tuple[int, object]]) -> dict[UUID, list[int]]:
+    """For each numbered item with variants in the list, the numbers of the other members of
+    its family. Items without siblings are absent."""
+    by_family: dict[UUID, list[int]] = {}
+    for num, item in items_with_numbers:
+        by_family.setdefault(item.parent_item_id or item.id, []).append(num)
+    return {
+        item.id: [n for n in by_family[item.parent_item_id or item.id] if n != num]
+        for num, item in items_with_numbers
+        if len(by_family[item.parent_item_id or item.id]) > 1
+    }
+
+
+def siblings_note(item_type: str | None, numbers: list[int]) -> str:
+    refs = ", ".join(f"[{n}]" for n in numbers)
+    return f"same {item_type or 'item'} as {refs}: pick at most one"

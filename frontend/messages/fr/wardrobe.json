@@ -233,7 +233,9 @@
       "wearsSinceWash": "Ports depuis le lavage : {current}/{max}",
       "wornCount": "{count, plural, one {Porté # fois} other {Porté # fois}}"
     },
-    "washInterval": "Intervalle de lavage"
+    "washInterval": "Intervalle de lavage",
+    "variants": "Variantes",
+    "variantOf": "Variante de {name}"
   },
   "lightbox": {
     "openInWardrobe": "Ouvrir dans la garde-robe"
@@ -277,5 +279,6 @@
     "daysAgo": "Porté il y a {days} j",
     "today": "Porté aujourd'hui",
     "yesterday": "Porté hier"
-  }
+  },
+  "variantCount": "{count, plural, one {# variante} other {# variantes}}"
 }

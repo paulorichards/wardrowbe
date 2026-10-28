@@ -1,6 +1,7 @@
 'use client';
 
 import { Trash2, Star, Sparkles, Bot } from 'lucide-react';
+import { withVariantName } from '@/lib/variant';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -77,7 +78,10 @@ export function PairingCard({ pairing, onFeedback, onPreview }: PairingCardProps
                 {pairing.source_item.thumbnail_url ? (
                   <Image
                     src={pairing.source_item.thumbnail_url}
-                    alt={pairing.source_item.name || pairing.source_item.type}
+                    alt={withVariantName(
+                    pairing.source_item.name || pairing.source_item.type,
+                    pairing.source_item.variant_name,
+                  )}
                     fill
                     className="object-cover"
                     sizes="48px"
@@ -90,7 +94,10 @@ export function PairingCard({ pairing, onFeedback, onPreview }: PairingCardProps
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">
-                  {pairing.source_item.name || pairing.source_item.type}
+                  {withVariantName(
+                    pairing.source_item.name || pairing.source_item.type,
+                    pairing.source_item.variant_name,
+                  )}
                 </p>
                 {pairing.source_item.primary_color && (
                   <p className="text-xs text-muted-foreground capitalize">
@@ -116,7 +123,7 @@ export function PairingCard({ pairing, onFeedback, onPreview }: PairingCardProps
               {item.thumbnail_url ? (
                 <Image
                   src={item.thumbnail_url}
-                  alt={item.name || typeLabel(item.type)}
+                  alt={withVariantName(item.name || typeLabel(item.type), item.variant_name)}
                   fill
                   className="object-cover"
                   sizes="56px"

@@ -233,7 +233,9 @@
       "wearsSinceWash": "洗濯後の着用：{current}/{max}",
       "wornCount": "{count, plural, one {# 回着用} other {# 回着用}}"
     },
-    "washInterval": "洗濯間隔"
+    "washInterval": "洗濯間隔",
+    "variants": "バリエーション",
+    "variantOf": "{name} のバリエーション"
   },
   "lightbox": {
     "openInWardrobe": "ワードローブで開く"
@@ -277,5 +279,6 @@
     "daysAgo": "{days}日前に着用",
     "today": "今日着用",
     "yesterday": "昨日着用"
-  }
+  },
+  "variantCount": "{count, plural, other {# 件のバリエーション}}"
 }

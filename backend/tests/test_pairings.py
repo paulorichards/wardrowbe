@@ -467,3 +467,53 @@ class TestGeneratePairingsPreservesSource:
             assert [oi.item_id for oi in sorted(outfits[0].items, key=lambda oi: oi.position)] == [
                 items[name].id for name in expected
             ]
+
+
+class TestPairingVariants:
+    @pytest.mark.asyncio
+    async def test_siblings_of_the_source_are_not_offered_and_prompt_lists_siblings(
+        self, db_session, test_user
+    ):
+        belt = _make_item(test_user.id, "belt", name="Belt", variant_name="Black")
+        shirt = _make_item(test_user.id, "shirt")
+        pants = _make_item(test_user.id, "pants")
+        watch = _make_item(test_user.id, "watch", name="Bulova", variant_name="Steel")
+        db_session.add_all([belt, shirt, pants, watch])
+        await db_session.commit()
+        belt_variant = _make_item(
+            test_user.id, "belt", name="Belt", variant_name="Brown", parent_item_id=belt.id
+        )
+        strap = _make_item(
+            test_user.id, "watch", name="Bulova", variant_name="Blue", parent_item_id=watch.id
+        )
+        db_session.add_all([belt_variant, strap])
+        await db_session.commit()
+
+        captured = {}
+        service = PairingService(db_session)
+        real = service._format_items_for_prompt
+
+        def spy(source, items):
+            captured["ids"] = {i.id for i in items}
+            captured["text"] = real(source, items)[1]
+            return real(source, items)
+
+        ai = MagicMock()
+        ai.generate_text = AsyncMock(
+            return_value=MagicMock(
+                content=json.dumps([{"items": [], "headline": "x", "styling_tip": ""}]),
+                model="m",
+                endpoint="e",
+            )
+        )
+        test_user.preferences = None
+        with (
+            patch("app.services.pairing_service.AIService", return_value=ai),
+            patch.object(service, "_format_items_for_prompt", spy),
+        ):
+            await service.generate_pairings(user=test_user, source_item_id=belt.id, num_pairings=1)
+
+        assert belt_variant.id not in captured["ids"]
+        assert {watch.id, strap.id} <= captured["ids"]
+        assert captured["text"].count("pick at most one") == 2
+        assert '"Bulova – Blue"' in captured["text"]

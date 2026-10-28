@@ -18,6 +18,20 @@ export interface ItemTags {
   source_url?: string;
 }
 
+export interface ItemVariant {
+  id: string;
+  variant_name: string | null;
+  primary_color?: string | null;
+  colors: string[];
+  material?: string | null;
+  status: Item['status'];
+  is_archived: boolean;
+  image_url?: string | null;
+  thumbnail_url?: string | null;
+  medium_url?: string | null;
+  updated_at: string;
+}
+
 export interface Item {
   id: string;
   user_id: string;
@@ -61,6 +75,10 @@ export interface Item {
   needs_wash: boolean;
   effective_wash_interval: number;
   additional_images: ItemImage[];
+  parent_item_id?: string | null;
+  variant_name?: string | null;
+  variant_count?: number;
+  variants?: ItemVariant[];
   is_archived: boolean;
   archived_at?: string;
   archive_reason?: string;
@@ -288,6 +306,8 @@ export interface OutfitItem {
   thumbnail_url: string | null;
   layer_type: string | null;
   position: number;
+  parent_item_id?: string | null;
+  variant_name?: string | null;
 }
 
 export interface WeatherData {
@@ -316,6 +336,7 @@ export interface WoreInsteadItem {
   id: string;
   type: string;
   name: string | null;
+  variant_name?: string | null;
   thumbnail_path: string | null;
   thumbnail_url: string | null;
 }
@@ -392,6 +413,8 @@ export interface SourceItem {
   thumbnail_path: string | null;
   image_url: string;
   thumbnail_url: string | null;
+  parent_item_id?: string | null;
+  variant_name?: string | null;
 }
 
 export interface PairingItem extends OutfitItem {
