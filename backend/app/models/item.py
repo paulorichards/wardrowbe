@@ -16,6 +16,7 @@ from sqlalchemy import (
     Text,
     func,
 )
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -143,6 +144,17 @@ class ClothingItem(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     favorite: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Variants: a variant is a child row pointing at its main item (one level only).
+    # See app/services/variant_service.py. The main item carries variant_name too
+    # once it has variants (its own default variant).
+    parent_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("clothing_items.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    variant_name: Mapped[str | None] = mapped_column(String(100))
+
     # Lifecycle
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -167,6 +179,28 @@ class ClothingItem(Base):
         cascade="all, delete-orphan",
         order_by="ItemImage.position",
     )
+    # join_depth=1: only the main item's children are loaded, never grandchildren.
+    variant_rows: Mapped[list["ClothingItem"]] = relationship(
+        "ClothingItem",
+        foreign_keys="ClothingItem.parent_item_id",
+        order_by="ClothingItem.created_at",
+        cascade="save-update, merge, delete",
+        lazy="selectin",
+        join_depth=1,
+    )
+
+    @property
+    def variants(self) -> list["ClothingItem"]:
+        # Never lazy-loads: a freshly created or refreshed row has the collection
+        # unloaded, and a lazy load inside a sync pydantic validator would raise
+        # MissingGreenlet. An unloaded collection means "no variants known".
+        if "variant_rows" in sa_inspect(self).unloaded:
+            return []
+        return list(self.variant_rows)
+
+    @property
+    def variant_count(self) -> int:
+        return len(self.variants)
 
 
 class ItemHistory(Base):

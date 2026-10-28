@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import ClothingItem, User, UserPreference
@@ -55,50 +55,58 @@ async def test_remaps_and_deduplicates_colours_idempotently(
 ):
     user_id = test_user.id
     async with migration_downgrade(db_session, PREVIOUS):
+        # Core inserts: at the old schema the ORM would also write the newer columns.
+        for row in [
+            {
+                "user_id": user_id,
+                "type": "pants",
+                "image_path": "x.jpg",
+                "primary_color": "charcoal",
+                "colors": ["charcoal", "gray", "Khaki", "tan", "teal", "army-green", "dark-brown"],
+            },
+            {
+                "user_id": user_id,
+                "type": "shirt",
+                "image_path": "y.jpg",
+                "primary_color": "light-blue",
+                "colors": ["light-blue", "salmon"],
+            },
+            {
+                "user_id": user_id,
+                "type": "jacket",
+                "image_path": "w.jpg",
+                "primary_color": " Light Blue ",
+                "colors": [
+                    "Navy",
+                    "NAVY",
+                    "Light Blue",
+                    None,
+                    "light-blue",
+                    "\u00a0\t",
+                    "\u2060",
+                    "Salmon",
+                    "dark\u00a0 blue",
+                    "\tLight  Grey\n",
+                    "\u0130ndigo",
+                ],
+            },
+            {
+                "user_id": user_id,
+                "type": "hat",
+                "image_path": "z.jpg",
+                "primary_color": None,
+                "colors": [],
+            },
+            {
+                "user_id": user_id,
+                "type": "scarf",
+                "image_path": "v.jpg",
+                "primary_color": "\u00a0\u200b\t ",
+            },
+        ]:
+            await db_session.execute(insert(ClothingItem.__table__).values(**row))
         db_session.add_all(
             [
-                ClothingItem(
-                    user_id=user_id,
-                    type="pants",
-                    image_path="x.jpg",
-                    primary_color="charcoal",
-                    colors=["charcoal", "gray", "Khaki", "tan", "teal", "army-green", "dark-brown"],
-                ),
-                ClothingItem(
-                    user_id=user_id,
-                    type="shirt",
-                    image_path="y.jpg",
-                    primary_color="light-blue",
-                    colors=["light-blue", "salmon"],
-                ),
-                ClothingItem(
-                    user_id=user_id,
-                    type="jacket",
-                    image_path="w.jpg",
-                    primary_color=" Light Blue ",
-                    colors=[
-                        "Navy",
-                        "NAVY",
-                        "Light Blue",
-                        None,
-                        "light-blue",
-                        "\u00a0\t",
-                        "\u2060",
-                        "Salmon",
-                        "dark\u00a0 blue",
-                        "\tLight  Grey\n",
-                        "\u0130ndigo",
-                    ],
-                ),
-                ClothingItem(
-                    user_id=user_id, type="hat", image_path="z.jpg", primary_color=None, colors=[]
-                ),
-                ClothingItem(
-                    user_id=user_id,
-                    type="scarf",
-                    image_path="v.jpg",
-                    primary_color="\u00a0\u200b\t ",
-                ),
                 UserPreference(
                     user_id=user_id,
                     color_favorites=["khaki", "tan", "NAVY", "charcoal", "Army Green"],

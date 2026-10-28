@@ -60,6 +60,12 @@ from app.schemas.item import (
 )
 from app.services.image_service import ImageService
 from app.services.item_service import ItemService
+from app.services.variant_service import (
+    clear_user_suggestions,
+    drop_identity_for_variant,
+    propagate_identity,
+    touches_colors,
+)
 from app.utils.auth import get_current_user
 from app.utils.signed_urls import sign_optional
 from app.utils.timezone import get_user_today
@@ -149,6 +155,7 @@ async def list_items(
     favorite: bool | None = None,
     needs_wash: bool | None = None,
     is_archived: bool = False,
+    include_variants: bool = False,
     search: str | None = None,
     sort_by: str | None = None,
     sort_order: str = "desc",
@@ -164,6 +171,7 @@ async def list_items(
         favorite=favorite,
         needs_wash=needs_wash,
         is_archived=is_archived,
+        include_variants=include_variants,
         search=search,
         sort_by=sort_by,
         sort_order=sort_order,
@@ -552,14 +560,15 @@ async def bulk_delete_items(
                 failed += 1
                 continue
 
-            image_service.delete_images(
-                {
-                    "image_path": item.image_path,
-                    "medium_path": item.medium_path,
-                    "thumbnail_path": item.thumbnail_path,
-                    "original_backup_path": item.original_image_path,
-                }
-            )
+            for doomed in (item, *item.variants):
+                image_service.delete_images(
+                    {
+                        "image_path": doomed.image_path,
+                        "medium_path": doomed.medium_path,
+                        "thumbnail_path": doomed.thumbnail_path,
+                        "original_backup_path": doomed.original_image_path,
+                    }
+                )
 
             await item_service.delete(item)
             deleted += 1
@@ -1288,14 +1297,18 @@ async def update_item(
             detail="Item not found",
         )
 
+    item_data = drop_identity_for_variant(item, item_data)
     update_data = item_data.model_dump(exclude_unset=True)
     if any(_has_tag_content(f, update_data.get(f)) for f in TAG_WRITEBACK_FIELDS):
         item.tagging_status = TaggingStatus.tagged
         item.tagged_by = TaggedBy.manual
         item.tagged_at = datetime.now(UTC)
 
-    item = await item_service.update(item, item_data)
-    return ItemResponse.model_validate(item)
+    propagate_identity(item, update_data)
+    updated = await item_service.update(item, item_data)
+    if touches_colors(update_data) or updated.parent_item_id or updated.variants:
+        await clear_user_suggestions(current_user.id)
+    return ItemResponse.model_validate(updated)
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -1314,14 +1327,15 @@ async def delete_item(
         )
 
     image_service = ImageService()
-    image_service.delete_images(
-        {
-            "image_path": item.image_path,
-            "medium_path": item.medium_path,
-            "thumbnail_path": item.thumbnail_path,
-            "original_backup_path": item.original_image_path,
-        }
-    )
+    for doomed in (item, *item.variants):
+        image_service.delete_images(
+            {
+                "image_path": doomed.image_path,
+                "medium_path": doomed.medium_path,
+                "thumbnail_path": doomed.thumbnail_path,
+                "original_backup_path": doomed.original_image_path,
+            }
+        )
 
     await item_service.delete(item)
 
